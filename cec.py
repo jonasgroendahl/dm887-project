@@ -101,8 +101,8 @@ replay_memory = ReplayMemory(5000)
 mem = Memory()
 actor_network = ActorNetwork(state_size, action_size)
 
-amount_of_training_to_do = 1000
-gamma = 0.99
+amount_of_training_to_do = 10000
+gamma = 0.99  # discount factor
 close_neighbour_threshold = 1
 
 # CEC Implementation: https://arxiv.org/pdf/2211.15183.pdf
@@ -123,7 +123,9 @@ for i in range(amount_of_training_to_do):
             x for x in nearest_neighbours if x[0] < close_neighbour_threshold
         ]
 
-        if len(filtered_neighbours) > 0:
+        if (
+            len(filtered_neighbours) > 0
+        ):  # something isn't right here, we dont use existing memory but we should
             state_tensor = Tensor(state)
             mean, std_deviation = actor_network(state_tensor)
             action = mean + torch.randn_like(std_deviation) * std_deviation
@@ -179,3 +181,51 @@ for i in range(amount_of_training_to_do):
     print(
         f"Episode {i} after {turns} turns - {total_reward} - {end_state} - {len(mem)}"
     )
+
+
+# evaluation
+for i in range(5):
+    state, info = game.reset()
+    done = False
+    total_reward = 0
+    end_state = None
+    turns = 0
+
+    while not done:
+        nearest_neighbours = mem.lookup(state)
+        # filter off the far away neighbours
+        filtered_neighbours = [
+            x for x in nearest_neighbours if x[0] < close_neighbour_threshold
+        ]
+
+        if len(nearest_neighbours) > 0:
+            # Aggregate actions from similar experiences
+            similar_actions = [x[1][1] for x in nearest_neighbours]
+            # Compute the mean action from similar experiences
+            aggregated_action = np.mean(similar_actions, axis=0)
+            action = aggregated_action
+
+        else:
+            # If no similar experiences found, use actor network
+            state_tensor = Tensor(state)
+            mean, std_deviation = actor_network(state_tensor)
+            action = mean + torch.randn_like(std_deviation) * std_deviation
+            action = action.detach().numpy()  # Convert to NumPy array
+
+        next_state, reward, terminated, truncated, _ = game.step(action)
+
+        state = next_state
+
+        done = terminated or truncated
+
+        if done:
+            if terminated:
+                end_state = "terminated"
+            else:
+                end_state = "truncated"
+
+        turns += 1
+
+        total_reward += reward
+
+    print(f"Evaluation: Episode {i} after {turns} turns - {total_reward} - {end_state}")
