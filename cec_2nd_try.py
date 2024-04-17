@@ -84,8 +84,6 @@ print("Latent space size: ", latent_space_size)
 replay_memory = ReplayMemory(5000)
 
 mem = Memory()
-actor_network = ActorNetwork(state_size, action_size)
-
 # hyperparameters
 amount_of_training_to_do = 10000
 gamma = 0.99  # discount factor
@@ -201,19 +199,15 @@ def evaluate():  # evaluation
                 x for x in nearest_neighbours if x[0] < close_neighbour_threshold
             ]
 
-            if len(nearest_neighbours) > 0:
-                # Aggregate actions from similar experiences
-                similar_actions = [x[1][1] for x in nearest_neighbours]
-                # Compute the mean action from similar experiences
-                aggregated_action = np.mean(similar_actions, axis=0)
-                action = aggregated_action
+            actions = np.array([x[1][1] for x in filtered_neighbours])
+            values = np.array([x[1][2] for x in filtered_neighbours])
 
-            else:
-                # If no similar experiences found, use actor network
-                state_tensor = Tensor(state)
-                mean, std_deviation = actor_network(state_tensor)
-                action = mean + torch.randn_like(std_deviation) * std_deviation
-                action = action.detach().numpy()  # Convert to NumPy array
+            # Softmax action selection
+            action_probs = softmax(values)
+            selected_action_index = np.random.choice(
+                len(filtered_neighbours), p=action_probs
+            )
+            action = actions[selected_action_index]
 
             next_state, reward, terminated, truncated, _ = game.step(action)
 
